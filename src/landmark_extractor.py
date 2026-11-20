@@ -3,12 +3,14 @@ import mediapipe as mp
 import time
 import numpy as np
 
-from preprocessing import normalize_hand
+from preprocessing import extract_two_hand_features
 from mediapipe.tasks import python
 from mediapipe.tasks.python import vision
 
 
-# 1. Load the model
+# ----------------------------------
+# 1. Load the MediaPipe model
+# ----------------------------------
 
 MODEL_PATH = "models/hand_landmarker.task"
 
@@ -25,19 +27,31 @@ options = vision.HandLandmarkerOptions(
 landmarker = vision.HandLandmarker.create_from_options(options)
 
 
+# ----------------------------------
 # 2. Open webcam
+# ----------------------------------
 
 cap = cv2.VideoCapture(0)
 
 if not cap.isOpened():
+
     print("Could not open webcam.")
+
     landmarker.close()
+
     exit()
+
 
 start_time = time.monotonic()
 
+print("SignFlow fixed-slot landmark extractor started!")
+print("Press S to inspect the feature vector.")
+print("Press Q to quit.")
 
-# 3. Process frames
+
+# ----------------------------------
+# 3. Process webcam frames
+# ----------------------------------
 
 while True:
 
@@ -46,120 +60,145 @@ while True:
     if not ret:
         break
 
+    # Mirror webcam for a selfie-style display
     frame = cv2.flip(frame, 1)
 
+    # Convert BGR to RGB
     rgb_frame = cv2.cvtColor(
         frame,
         cv2.COLOR_BGR2RGB
     )
 
+    # Convert to MediaPipe image
     mp_image = mp.Image(
         image_format=mp.ImageFormat.SRGB,
         data=rgb_frame
     )
 
+    # Generate timestamp
     timestamp_ms = int(
         (time.monotonic() - start_time) * 1000
     )
 
+    # Detect hands
     results = landmarker.detect_for_video(
         mp_image,
         timestamp_ms
     )
 
 
-    # 4. Extract and normalise detected hand landmarks
+    # ----------------------------------
+    # 4. Extract fixed-slot features
+    # ----------------------------------
 
-    feature_vector = []
-
-    for hand_landmarks in results.hand_landmarks:
-
-        normalized_landmarks = normalize_hand(
-            hand_landmarks
-        )
-
-        feature_vector.extend(
-            normalized_landmarks.flatten()
-        )
-
-
-    # Pad missing data with zeros
-
-    while len(feature_vector) < 126:
-
-        feature_vector.append(0.0)
-
-
-    feature_vector = np.array(
-        feature_vector[:126],
-        dtype=np.float32
+    feature_vector = extract_two_hand_features(
+        results
     )
-
-
-    # 5. Display information
 
     hand_count = len(results.hand_landmarks)
 
+
+    # ----------------------------------
+    # 5. Display hand information
+    # ----------------------------------
+
+    left_present = int(feature_vector[126])
+    right_present = int(feature_vector[127])
+
     cv2.putText(
         frame,
-        f"Hands: {hand_count}",
+        f"Hands detected: {hand_count}",
         (20, 40),
         cv2.FONT_HERSHEY_SIMPLEX,
-        1,
+        0.8,
         (0, 255, 0),
         2
     )
 
     cv2.putText(
         frame,
-        f"Feature shape: {feature_vector.shape}",
+        f"Left hand: {left_present}",
         (20, 80),
         cv2.FONT_HERSHEY_SIMPLEX,
-        0.7,
+        0.8,
         (255, 255, 0),
         2
     )
 
+    cv2.putText(
+        frame,
+        f"Right hand: {right_present}",
+        (20, 120),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        0.8,
+        (255, 255, 0),
+        2
+    )
 
-    # 6. Print data when S is pressed
+    cv2.putText(
+        frame,
+        f"Feature shape: {feature_vector.shape}",
+        (20, 160),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        0.7,
+        (0, 255, 255),
+        2
+    )
+
+
+    # ----------------------------------
+    # 6. Display webcam
+    # ----------------------------------
 
     cv2.imshow(
-        "SignFlow - Landmark Data",
+        "SignFlow - Fixed Hand Slots",
         frame
     )
 
     key = cv2.waitKey(1) & 0xFF
 
+
+    # ----------------------------------
+    # 7. Inspect features using S
+    # ----------------------------------
+
     if key == ord("s"):
 
-        print("\n--- Landmark Feature Vector ---")
+        print("\n--- SignFlow Feature Data ---")
 
-        print(feature_vector)
-
-        print("\nFeature vector shape:")
+        print("Feature vector shape:")
         print(feature_vector.shape)
 
-        print("\nNumber of detected hands:")
-        print(hand_count)
+        print("\nLeft hand detected:")
+        print(left_present)
 
-        print("\nMinimum value:")
-        print(np.min(feature_vector))
+        print("\nRight hand detected:")
+        print(right_present)
 
-        print("\nMaximum value:")
-        print(np.max(feature_vector))
+        print("\nFirst 10 left-hand features:")
+        print(feature_vector[:10])
 
-        print("\nFirst three values (wrist):")
-        print(feature_vector[:3])
+        print("\nFirst 10 right-hand features:")
+        print(feature_vector[63:73])
 
+        print("\nPresence indicators:")
+        print(feature_vector[126:128])
+
+
+    # ----------------------------------
+    # 8. Quit
+    # ----------------------------------
 
     if key == ord("q"):
         break
 
 
-# 7. Clean up
+# ----------------------------------
+# 9. Clean up
+# ----------------------------------
 
 cap.release()
 landmarker.close()
 cv2.destroyAllWindows()
 
-print("Landmark extraction stopped.")
+print("Fixed-slot landmark extraction stopped.")
