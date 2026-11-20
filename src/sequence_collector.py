@@ -1,3 +1,4 @@
+
 import cv2
 import mediapipe as mp
 import time
@@ -6,13 +7,13 @@ import numpy as np
 from collections import deque
 from pathlib import Path
 
-from preprocessing import normalize_hand
+from preprocessing import extract_two_hand_features
 from mediapipe.tasks import python
 from mediapipe.tasks.python import vision
 
 
 # ----------------------------------
-# 1. Load the MediaPipe model
+# 1. Load MediaPipe model
 # ----------------------------------
 
 MODEL_PATH = "models/hand_landmarker.task"
@@ -31,11 +32,11 @@ landmarker = vision.HandLandmarker.create_from_options(options)
 
 
 # ----------------------------------
-# 2. Set up sequence parameters
+# 2. Sequence parameters
 # ----------------------------------
 
 SEQUENCE_LENGTH = 30
-FEATURE_COUNT = 126
+FEATURE_COUNT = 128
 
 sequence_buffer = deque(
     maxlen=SEQUENCE_LENGTH
@@ -65,7 +66,7 @@ print("Press Q to quit.")
 
 
 # ----------------------------------
-# 4. Process webcam frames
+# 4. Process frames
 # ----------------------------------
 
 while True:
@@ -103,37 +104,14 @@ while True:
 
 
     # ----------------------------------
-    # 5. Extract normalised landmarks
+    # 5. Extract fixed-slot features
     # ----------------------------------
 
-    feature_vector = []
-
-    for hand_landmarks in results.hand_landmarks:
-
-        normalized_landmarks = normalize_hand(
-            hand_landmarks
-        )
-
-        feature_vector.extend(
-            normalized_landmarks.flatten()
-        )
-
-
-    # Pad or truncate to 126 features
-
-    while len(feature_vector) < FEATURE_COUNT:
-
-        feature_vector.append(0.0)
-
-
-    feature_vector = np.array(
-        feature_vector[:FEATURE_COUNT],
-        dtype=np.float32
+    feature_vector = extract_two_hand_features(
+        results
     )
 
-
-    # Add current frame to sequence buffer
-
+    # Add current frame to the rolling buffer
     sequence_buffer.append(feature_vector)
 
 
@@ -143,23 +121,36 @@ while True:
 
     hand_count = len(results.hand_landmarks)
 
+    left_present = int(feature_vector[126])
+    right_present = int(feature_vector[127])
+
     cv2.putText(
         frame,
         f"Hands: {hand_count}",
         (20, 40),
         cv2.FONT_HERSHEY_SIMPLEX,
-        1,
+        0.8,
         (0, 255, 0),
         2
     )
 
     cv2.putText(
         frame,
-        f"Frames: {len(sequence_buffer)}/{SEQUENCE_LENGTH}",
+        f"Left: {left_present} Right: {right_present}",
         (20, 80),
         cv2.FONT_HERSHEY_SIMPLEX,
-        0.8,
+        0.7,
         (255, 255, 0),
+        2
+    )
+
+    cv2.putText(
+        frame,
+        f"Frames: {len(sequence_buffer)}/{SEQUENCE_LENGTH}",
+        (20, 120),
+        cv2.FONT_HERSHEY_SIMPLEX,
+        0.8,
+        (0, 255, 255),
         2
     )
 
@@ -177,7 +168,7 @@ while True:
 
 
     # ----------------------------------
-    # 8. Save sequence when S is pressed
+    # 8. Save sequence
     # ----------------------------------
 
     if key == ord("s"):
@@ -194,12 +185,11 @@ while True:
             print("Sequence shape:")
             print(sequence.shape)
 
-            print("\nTotal values:")
+            print("Total values:")
             print(sequence.size)
 
 
-            # Create output directory
-
+            # Create directory
             output_dir = Path("data/processed")
 
             output_dir.mkdir(
@@ -208,8 +198,7 @@ while True:
             )
 
 
-            # Save sequence
-
+            # Save demo sequence
             output_path = (
                 output_dir / "demo_sequence.npy"
             )
