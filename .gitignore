@@ -1,0 +1,25 @@
+# Python environments
+.venv/
+
+# Python cache
+__pycache__/
+*.pyc
+
+# Dataset files
+data/raw/
+data/processed/
+
+# Model files
+*.pth
+*.pt
+*.pkl
+*.joblib
+
+# IDE
+.vscode/
+
+# Environment variables
+.env
+
+# Temporary files
+*.tmp
